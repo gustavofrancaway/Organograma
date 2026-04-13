@@ -931,22 +931,26 @@ export default function App() {
   return (
     <div className="size-full bg-gradient-to-br from-background via-background to-secondary/20 overflow-auto">
       <div className="max-w-[1600px] mx-auto p-8">
-        <div className="text-center mb-16 relative">
-          <button
-            onClick={sair}
-            className="absolute right-0 top-0 px-4 py-2 text-sm bg-destructive text-white rounded-xl hover:bg-destructive/90 transition-colors"
-          >
-            Sair
-          </button>
+        <div className="text-center mb-16">
+  <div className="flex justify-center sm:justify-end mb-4">
+    <button
+      onClick={sair}
+      className="px-4 py-2 text-sm bg-destructive text-white rounded-xl hover:bg-destructive/90 transition-colors"
+    >
+      Sair
+    </button>
+  </div>
 
-          <h1 className="mb-2 text-3xl font-bold">Mapa de Sistemas</h1>
-          <p className="text-muted-foreground mb-4">Way Brasil</p>
-          {carregando && (
-            <p className="text-xs text-muted-foreground">
-              Sincronizando com o Supabase...
-            </p>
-          )}
-        </div>
+  <h1 className="mb-2 text-3xl font-bold">Mapa de Sistemas</h1>
+  <p className="text-muted-foreground mb-4">Way Brasil</p>
+  {carregando && (
+    <p className="text-xs text-muted-foreground">
+      Sincronizando com o Supabase...
+    </p>
+  )}
+</div>
+
+
 
         <div className="relative mb-20">
           <div className="flex justify-center mb-8">
