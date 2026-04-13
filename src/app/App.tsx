@@ -16,6 +16,7 @@ type Pessoa = {
   id: string;
   nome: string;
   cargo: string;
+  cargo_descricao?: string | null;
   foto: string | null;
   grupo_id?: string | null;
   ordem?: number | null;
@@ -26,6 +27,7 @@ type PessoaSistema = {
   nome: string;
   foto: string | null;
   cargo: string;
+  cargo_descricao?: string | null;
 };
 
 type CoordenacaoState = {
@@ -206,6 +208,7 @@ export default function App() {
       id: `infra-local-${idx}`,
       nome: i.nome,
       cargo: i.cargo,
+      cargo_descricao: i.cargo,
       foto: i.foto,
       ordem: idx + 1,
     })),
@@ -230,6 +233,16 @@ export default function App() {
   const mostrarErro = (error: unknown, contexto = "operação") => {
     console.error(`Erro em ${contexto}:`, error);
     alert(`Erro em ${contexto}. Veja o console.`);
+  };
+
+  const getCargoExibicao = (pessoa: {
+    cargo: string;
+    cargo_descricao?: string | null;
+  }) => {
+    if (pessoa.cargo === "Infraestrutura") {
+      return pessoa.cargo_descricao?.trim() || "Infraestrutura";
+    }
+    return pessoa.cargo;
   };
 
   const testar = async () => {
@@ -312,6 +325,7 @@ export default function App() {
       INFRA_INICIAL.map((i, idx) => ({
         nome: i.nome,
         cargo: i.cargo,
+        cargo_descricao: i.cargo,
         foto: i.foto,
         ordem: idx + 1,
       })),
@@ -452,6 +466,7 @@ export default function App() {
             id: (p as Pessoa).id,
             nome: (p as Pessoa).nome,
             cargo: (p as Pessoa).cargo,
+            cargo_descricao: (p as Pessoa).cargo_descricao,
             foto: (p as Pessoa).foto,
           }));
 
@@ -463,6 +478,7 @@ export default function App() {
             id: (p as Pessoa).id,
             nome: (p as Pessoa).nome,
             cargo: (p as Pessoa).cargo,
+            cargo_descricao: (p as Pessoa).cargo_descricao,
             foto: (p as Pessoa).foto,
           }));
 
@@ -559,6 +575,7 @@ export default function App() {
       const { error } = await supabase.from("pessoas").insert({
         nome: "Nova Infra",
         cargo: "Infraestrutura",
+        cargo_descricao: "Infraestrutura",
         foto: null,
         ordem: proximaOrdem,
       });
@@ -658,6 +675,7 @@ export default function App() {
         id: a.id,
         nome: a.nome,
         cargo: a.cargo,
+        cargo_descricao: a.cargo_descricao,
         foto: a.foto,
       }),
     );
@@ -668,6 +686,7 @@ export default function App() {
           id: p.id,
           nome: p.nome,
           cargo: p.cargo,
+          cargo_descricao: p.cargo_descricao,
           foto: p.foto,
         }),
       ),
@@ -678,6 +697,7 @@ export default function App() {
         id: i.id,
         nome: i.nome,
         cargo: i.cargo,
+        cargo_descricao: i.cargo_descricao,
         foto: i.foto,
       }),
     );
@@ -789,7 +809,11 @@ export default function App() {
       } else if (tipo === "infra-cargo") {
         const pessoa = equipeInfra[indices[0]];
         if (!pessoa?.id) return;
-        await atualizarPessoa(pessoa.id, { cargo: valor }, "infra-cargo");
+        await atualizarPessoa(
+          pessoa.id,
+          { cargo_descricao: valor },
+          "infra-cargo",
+        );
       }
 
       await carregarDados();
@@ -1305,7 +1329,7 @@ export default function App() {
                                   {pessoa.nome}
                                 </div>
                                 <div className="text-xs text-muted-foreground">
-                                  {pessoa.cargo}
+                                  {getCargoExibicao(pessoa)}
                                 </div>
                               </div>
                               <button
@@ -1362,7 +1386,7 @@ export default function App() {
                                   {pessoa.nome}
                                 </div>
                                 <div className="text-xs text-muted-foreground">
-                                  {pessoa.cargo}
+                                  {getCargoExibicao(pessoa)}
                                 </div>
                               </div>
                               <button
@@ -1459,11 +1483,14 @@ export default function App() {
                         ) : (
                           <div
                             onClick={() =>
-                              iniciarEdicao(`infra-cargo-${idx}`, infra.cargo)
+                              iniciarEdicao(
+                                `infra-cargo-${idx}`,
+                                infra.cargo_descricao || "Infraestrutura",
+                              )
                             }
                             className="text-xs text-muted-foreground cursor-pointer hover:text-foreground flex items-center justify-center gap-1 italic"
                           >
-                            {infra.cargo}
+                            {getCargoExibicao(infra)}
                             <Edit2 className="w-2 h-2 opacity-30" />
                           </div>
                         )}
@@ -1543,7 +1570,7 @@ export default function App() {
                         {pessoa.nome}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {pessoa.cargo}
+                        {getCargoExibicao(pessoa)}
                       </div>
                     </div>
                     <div
