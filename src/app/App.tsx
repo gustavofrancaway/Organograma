@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
+import Login from "./components/Login";
 
 type Pessoa = {
   id: string;
@@ -226,9 +227,22 @@ export default function App() {
 
   const [carregando, setCarregando] = useState(false);
 
+  const [autenticado, setAutenticado] = useState(false);
+  const [verificandoAuth, setVerificandoAuth] = useState(true);
+
   useEffect(() => {
-    carregarDados();
+    const auth = localStorage.getItem("way_auth");
+    if (auth === "true") {
+      setAutenticado(true);
+    }
+    setVerificandoAuth(false);
   }, []);
+
+  useEffect(() => {
+    if (autenticado) {
+      carregarDados();
+    }
+  }, [autenticado]);
 
   const mostrarErro = (error: unknown, contexto = "operação") => {
     console.error(`Erro em ${contexto}:`, error);
@@ -243,6 +257,11 @@ export default function App() {
       return pessoa.cargo_descricao?.trim() || "Infraestrutura";
     }
     return pessoa.cargo;
+  };
+
+  const sair = () => {
+    localStorage.removeItem("way_auth");
+    setAutenticado(false);
   };
 
   const testar = async () => {
@@ -897,10 +916,29 @@ export default function App() {
     );
   };
 
+  if (verificandoAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-secondary/20">
+        <div className="text-sm text-muted-foreground">Verificando acesso...</div>
+      </div>
+    );
+  }
+
+  if (!autenticado) {
+    return <Login onSuccess={() => setAutenticado(true)} />;
+  }
+
   return (
     <div className="size-full bg-gradient-to-br from-background via-background to-secondary/20 overflow-auto">
       <div className="max-w-[1600px] mx-auto p-8">
-        <div className="text-center mb-16">
+        <div className="text-center mb-16 relative">
+          <button
+            onClick={sair}
+            className="absolute right-0 top-0 px-4 py-2 text-sm bg-destructive text-white rounded-xl hover:bg-destructive/90 transition-colors"
+          >
+            Sair
+          </button>
+
           <h1 className="mb-2 text-3xl font-bold">Mapa de Sistemas</h1>
           <p className="text-muted-foreground mb-4">Way Brasil</p>
           {carregando && (
