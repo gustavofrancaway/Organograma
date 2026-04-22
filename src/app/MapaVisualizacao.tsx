@@ -39,8 +39,20 @@ type SistemaPessoaDb = {
   tipo: "responsaveis" | "infraestrutura";
 };
 
-const CARGOS_ITS = ["Gerente", "Coordenação", "Analista", "Suporte"];
-const CARGOS_INFRA = ["Gerente", "Coordenação", "Suporte"];
+type CargoConfig = { cargo: string; label: string };
+
+const CARGOS_ITS: CargoConfig[] = [
+  { cargo: "Suporte", label: "Nível 1 - Suporte" },
+  { cargo: "Analista", label: "Nível 2 - Analista" },
+  { cargo: "Coordenação", label: "Nível 3 - Coordenação" },
+  { cargo: "Gerente", label: "Gerente" },
+];
+
+const CARGOS_INFRA: CargoConfig[] = [
+  { cargo: "Suporte", label: "Nível 1 - Suporte" },
+  { cargo: "Coordenação", label: "Nível 2 - Coordenação" },
+  { cargo: "Gerente", label: "Gerente" },
+];
 
 const ordenarPorOrdem = <T extends { ordem?: number | null; nome?: string }>(
   lista: T[],
@@ -196,7 +208,7 @@ export default function MapaVisualizacao() {
     u: Unidade,
     setor: SetorSistema,
     titulo: string,
-    cargos: string[],
+    cargos: CargoConfig[],
     cor: string,
   ) => (
     <div className="border border-border rounded-2xl p-5 bg-card">
@@ -208,14 +220,14 @@ export default function MapaVisualizacao() {
       </div>
 
       <div className="space-y-5">
-        {cargos.map((cargo) => {
+        {cargos.map(({ cargo, label }) => {
           const lista = getPessoasUnidadeSetor(u.id, setor).filter(
             (p) => p.cargo === cargo,
           );
           return (
             <div key={cargo}>
               <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                {cargo}
+                {label}
               </div>
               {lista.length === 0 ? (
                 <div className="text-xs text-muted-foreground italic">
@@ -418,7 +430,6 @@ export default function MapaVisualizacao() {
           {erro && <p className="text-xs text-destructive mt-2">{erro}</p>}
         </div>
 
-        {/* Way Brasil */}
         <div className="flex justify-center mb-10">
           <div className="w-48 h-48 rounded-full bg-gradient-to-br from-chart-1 to-chart-2 flex flex-col items-center justify-center text-white shadow-2xl">
             <Building2 className="w-16 h-16 mb-2" />
@@ -427,7 +438,6 @@ export default function MapaVisualizacao() {
           </div>
         </div>
 
-        {/* Gerente Geral (abaixo do Way Brasil) */}
         <div className="mb-12">
           <div className="text-center mb-6">
             <div className="inline-flex items-center gap-2 bg-primary text-white px-6 py-2 rounded-full font-medium">
@@ -464,7 +474,6 @@ export default function MapaVisualizacao() {
           </div>
         </div>
 
-        {/* Matriz de responsabilidade Unidades */}
         <div className="mb-16">
           <h2 className="text-lg font-bold mb-6">Matriz de responsabilidade Unidades</h2>
           <div className="space-y-5">

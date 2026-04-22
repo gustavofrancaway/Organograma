@@ -54,8 +54,22 @@ type SistemaPessoaDb = {
   tipo: "responsaveis" | "infraestrutura";
 };
 
-const CARGOS_ITS = ["Gerente", "Coordenação", "Analista", "Suporte"] as const;
-const CARGOS_INFRA = ["Gerente", "Coordenação", "Suporte"] as const;
+type CargoConfig = { cargo: string; label: string };
+
+// Ordem da tela do Setor Sistemas (ITS)
+const CARGOS_ITS: CargoConfig[] = [
+  { cargo: "Suporte", label: "Nível 1 - Suporte" },
+  { cargo: "Analista", label: "Nível 2 - Analista" },
+  { cargo: "Coordenação", label: "Nível 3 - Coordenação" },
+  { cargo: "Gerente", label: "Gerente" },
+];
+
+// Ordem da tela do Setor Infra e Redes
+const CARGOS_INFRA: CargoConfig[] = [
+  { cargo: "Suporte", label: "Nível 1 - Suporte" },
+  { cargo: "Coordenação", label: "Nível 2 - Coordenação" },
+  { cargo: "Gerente", label: "Gerente" },
+];
 
 const ordenarPorOrdem = <T extends { ordem?: number | null; nome?: string }>(
   lista: T[],
@@ -193,7 +207,6 @@ export default function App() {
     }
   };
 
-  // ======== helpers ========
   const gerenteGeral = pessoas.find((p) => p.gerente_geral);
 
   const getPessoasUnidadeSetor = (uid: string, setor: SetorSistema) =>
@@ -220,7 +233,7 @@ export default function App() {
     [pessoas],
   );
 
-  // ======== unidades ========
+  // unidades
   const addUnidade = async () => {
     try {
       const ord =
@@ -255,7 +268,7 @@ export default function App() {
     }
   };
 
-  // ======== pessoas ========
+  // pessoas
   const addPessoa = async (uid: string, setor: SetorSistema, cargo: string) => {
     try {
       const list = pessoas.filter(
@@ -318,7 +331,7 @@ export default function App() {
     }
   };
 
-  // ======== sistemas ========
+  // sistemas
   const addSistema = async (setor: SetorSistema, nome: string) => {
     try {
       const n = nome.trim();
@@ -409,7 +422,7 @@ export default function App() {
     }
   };
 
-  // ======== upload ========
+  // upload
   const handleImageUpload = (
     file: File,
     cb: (url: string) => void | Promise<void>,
@@ -430,7 +443,6 @@ export default function App() {
     setValorTemp("");
   };
 
-  // ======== modal seleção pessoas sistema ========
   const abrirModal = (sid: string, tipo: "responsaveis" | "infraestrutura") => {
     setModalConfig({ sistemaId: sid, tipo });
     setModalAberto(true);
@@ -450,7 +462,6 @@ export default function App() {
 
   const todasPessoasOrdenadas = useMemo(() => ordenarPorOrdem(pessoas), [pessoas]);
 
-  // ======== UI helpers ========
   const AvatarUpload = ({
     foto,
     onUpload,
@@ -593,7 +604,7 @@ export default function App() {
     u: Unidade,
     setor: SetorSistema,
     titulo: string,
-    cargos: readonly string[],
+    cargos: CargoConfig[],
     cor: string,
   ) => (
     <div className="border border-border rounded-2xl p-5 bg-card">
@@ -605,7 +616,7 @@ export default function App() {
       </div>
 
       <div className="space-y-5">
-        {cargos.map((cargo) => {
+        {cargos.map(({ cargo, label }) => {
           const lista = getPessoasUnidadeSetor(u.id, setor).filter(
             (p) => p.cargo === cargo,
           );
@@ -613,7 +624,7 @@ export default function App() {
             <div key={cargo}>
               <div className="flex items-center justify-between mb-2">
                 <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {cargo}
+                  {label}
                 </div>
                 <button
                   onClick={() => addPessoa(u.id, setor, cargo)}
