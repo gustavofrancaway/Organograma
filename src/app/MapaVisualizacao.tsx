@@ -1,68 +1,35 @@
-import { User, Building2, Server } from "lucide-react";
+import { User, Building2, Server, Info, Network, X, ChevronDown, Crown } from "lucide-react";
 import { useEffect, useState } from "react";
+import type { JSX } from "react";
 import { supabase } from "../lib/supabase";
+
+type SetorSistema = "ITS" | "INFRA";
 
 type Pessoa = {
   id: string;
   nome: string;
   cargo: string;
   cargo_descricao?: string | null;
+  descricao?: string | null;
   foto: string | null;
-  grupo_id?: string | null;
+  setor: SetorSistema;
+  unidade_id: string | null;
+  gerente_id?: string | null;
+  coordenador_id?: string | null;
+  gerente_geral?: boolean | null;
   ordem?: number | null;
 };
 
-type PessoaSistema = {
-  id: string;
-  nome: string;
-  foto: string | null;
-  cargo: string;
-  cargo_descricao?: string | null;
-};
-
-type CoordenacaoState = {
-  id: string;
-  nome: string;
-  cargo: string;
-  empresas: string[];
-  foto: string | null;
-};
-
-type GrupoSuporteState = {
-  id: string;
-  grupo: string;
-  empresas: string[];
-  pessoas: Pessoa[];
-  ordem?: number | null;
-};
+type Unidade = { id: string; nome: string; ordem: number | null };
 
 type SistemaState = {
   id: string;
   nome: string;
   foto: string | null;
-  responsaveis: PessoaSistema[];
-  infraestrutura: PessoaSistema[];
+  responsaveis: Pessoa[];
+  infraestrutura: Pessoa[];
   ordem?: number | null;
-};
-
-type GrupoDb = {
-  id: string;
-  nome: string;
-  ordem: number | null;
-};
-
-type GrupoEmpresaDb = {
-  id: string;
-  grupo_id: string;
-  empresa: string;
-  ordem: number | null;
-};
-
-type PessoaEmpresaDb = {
-  id: string;
-  pessoa_id: string;
-  empresa: string;
-  ordem: number | null;
+  setor: SetorSistema;
 };
 
 type SistemaPessoaDb = {
@@ -72,193 +39,114 @@ type SistemaPessoaDb = {
   tipo: "responsaveis" | "infraestrutura";
 };
 
+const CARGOS_ITS = ["Gerente", "Coordenação", "Analista", "Suporte"];
+const CARGOS_INFRA = ["Gerente", "Coordenação", "Suporte"];
+
 const ordenarPorOrdem = <T extends { ordem?: number | null; nome?: string }>(
   lista: T[],
-) => {
-  return [...lista].sort((a, b) => {
-    const ordemA = a.ordem ?? 0;
-    const ordemB = b.ordem ?? 0;
-    if (ordemA !== ordemB) return ordemA - ordemB;
+) =>
+  [...lista].sort((a, b) => {
+    const oa = a.ordem ?? 0;
+    const ob = b.ordem ?? 0;
+    if (oa !== ob) return oa - ob;
     return (a.nome ?? "").localeCompare(b.nome ?? "");
   });
-};
 
 export default function MapaVisualizacao() {
-  const [coordenacao, setCoordenacao] = useState<CoordenacaoState>({
-    id: "",
-    nome: "",
-    cargo: "",
-    empresas: [],
-    foto: null,
-  });
-
-  const [analistas, setAnalistas] = useState<Pessoa[]>([]);
-  const [suporteGrupos, setSuporteGrupos] = useState<GrupoSuporteState[]>([]);
+  const [unidades, setUnidades] = useState<Unidade[]>([]);
+  const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [sistemas, setSistemas] = useState<SistemaState[]>([]);
-  const [equipeInfra, setEquipeInfra] = useState<Pessoa[]>([]);
 
-  const [sistemaExpandido, setSistemaExpandido] = useState<number | null>(null);
+  const [sistemaExpandido, setSistemaExpandido] = useState<string | null>(null);
+  const [unidadesAbertas, setUnidadesAbertas] = useState<Record<string, boolean>>({});
+
+  const [pessoaInfoId, setPessoaInfoId] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
 
   useEffect(() => {
-    carregarDados();
+    carregar();
   }, []);
 
-  const mostrarErro = (error: unknown, contexto = "operação") => {
-    console.error(`Erro em ${contexto}:`, error);
-    setErro(`Erro em ${contexto}. Veja o console.`);
-  };
+  const getCargoExibicao = (p: { cargo: string; cargo_descricao?: string | null }) =>
+    p.cargo_descricao?.trim() || p.cargo;
 
-  const getCargoExibicao = (pessoa: {
-    cargo: string;
-    cargo_descricao?: string | null;
-  }) => {
-    if (pessoa.cargo === "Infraestrutura") {
-      return pessoa.cargo_descricao?.trim() || "Infraestrutura";
-    }
-    return pessoa.cargo;
-  };
+  const getPessoasUnidadeSetor = (uid: string, setor: SetorSistema) =>
+    ordenarPorOrdem(
+      pessoas.filter(
+        (p) => p.unidade_id === uid && p.setor === setor && !p.gerente_geral,
+      ),
+    );
 
-  const carregarDados = async () => {
+  const carregar = async () => {
     try {
       setCarregando(true);
       setErro("");
-
-      const [
-        pessoasRes,
-        gruposRes,
-        grupoEmpresasRes,
-        pessoaEmpresasRes,
-        sistemasRes,
-        sistemaPessoasRes,
-      ] = await Promise.all([
+      const [uRes, pRes, sRes, spRes] = await Promise.all([
+        supabase.from("unidades").select("*").order("ordem", { ascending: true }),
         supabase.from("pessoas").select("*").order("ordem", { ascending: true }),
-        supabase
-          .from("grupos_suporte")
-          .select("*")
-          .order("ordem", { ascending: true }),
-        supabase
-          .from("grupo_empresas")
-          .select("*")
-          .order("ordem", { ascending: true }),
-        supabase
-          .from("pessoa_empresas")
-          .select("*")
-          .order("ordem", { ascending: true }),
         supabase.from("sistemas").select("*").order("ordem", { ascending: true }),
         supabase.from("sistema_pessoas").select("*"),
       ]);
+      if (uRes.error) throw uRes.error;
+      if (pRes.error) throw pRes.error;
+      if (sRes.error) throw sRes.error;
+      if (spRes.error) throw spRes.error;
 
-      if (pessoasRes.error) throw pessoasRes.error;
-      if (gruposRes.error) throw gruposRes.error;
-      if (grupoEmpresasRes.error) throw grupoEmpresasRes.error;
-      if (pessoaEmpresasRes.error) throw pessoaEmpresasRes.error;
-      if (sistemasRes.error) throw sistemasRes.error;
-      if (sistemaPessoasRes.error) throw sistemaPessoasRes.error;
-
-      const pessoas = (pessoasRes.data ?? []) as Pessoa[];
-      const grupos = (gruposRes.data ?? []) as GrupoDb[];
-      const grupoEmpresas = (grupoEmpresasRes.data ?? []) as GrupoEmpresaDb[];
-      const pessoaEmpresas = (pessoaEmpresasRes.data ?? []) as PessoaEmpresaDb[];
-      const sistemasDb = (sistemasRes.data ?? []) as Array<{
+      const u = (uRes.data ?? []) as Unidade[];
+      const p = (pRes.data ?? []).map((r: any) => ({
+        ...r,
+        setor: r.setor === "INFRA" ? "INFRA" : "ITS",
+      })) as Pessoa[];
+      const sDb = (sRes.data ?? []).map((r: any) => ({
+        ...r,
+        setor: r.setor === "INFRA" ? "INFRA" : "ITS",
+      })) as Array<{
         id: string;
         nome: string;
         foto: string | null;
         ordem: number | null;
+        setor: SetorSistema;
       }>;
-      const sistemaPessoas = (sistemaPessoasRes.data ?? []) as SistemaPessoaDb[];
+      const sp = (spRes.data ?? []) as SistemaPessoaDb[];
 
-      const coordenacaoDb = pessoas.find((p) => p.cargo === "Coordenação");
+      setUnidades(u);
+      setPessoas(p);
 
-      if (coordenacaoDb) {
-        setCoordenacao({
-          id: coordenacaoDb.id,
-          nome: coordenacaoDb.nome,
-          cargo: coordenacaoDb.cargo,
-          foto: coordenacaoDb.foto,
-          empresas: pessoaEmpresas
-            .filter((e) => e.pessoa_id === coordenacaoDb.id)
-            .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
-            .map((e) => e.empresa),
-        });
-      } else {
-        setCoordenacao({
-          id: "",
-          nome: "",
-          cargo: "",
-          empresas: [],
-          foto: null,
-        });
-      }
+      const byId = new Map<string, Pessoa>();
+      p.forEach((x) => byId.set(x.id, x));
 
-      setAnalistas(ordenarPorOrdem(pessoas.filter((p) => p.cargo === "Analista")));
-      setEquipeInfra(
-        ordenarPorOrdem(pessoas.filter((p) => p.cargo === "Infraestrutura")),
+      setSistemas(
+        sDb.map((s) => {
+          const rels = sp.filter((r) => r.sistema_id === s.id);
+          return {
+            id: s.id,
+            nome: s.nome,
+            foto: s.foto,
+            ordem: s.ordem,
+            setor: s.setor,
+            responsaveis: rels
+              .filter((r) => r.tipo === "responsaveis")
+              .map((r) => byId.get(r.pessoa_id))
+              .filter(Boolean) as Pessoa[],
+            infraestrutura: rels
+              .filter((r) => r.tipo === "infraestrutura")
+              .map((r) => byId.get(r.pessoa_id))
+              .filter(Boolean) as Pessoa[],
+          };
+        }),
       );
 
-      const suportePessoas = ordenarPorOrdem(
-        pessoas.filter((p) => p.cargo === "Suporte"),
-      );
-
-      const suporteGruposMontados: GrupoSuporteState[] = grupos.map((grupo) => ({
-        id: grupo.id,
-        grupo: grupo.nome,
-        ordem: grupo.ordem,
-        empresas: grupoEmpresas
-          .filter((e) => e.grupo_id === grupo.id)
-          .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
-          .map((e) => e.empresa),
-        pessoas: ordenarPorOrdem(
-          suportePessoas.filter((p) => p.grupo_id === grupo.id),
-        ),
-      }));
-
-      setSuporteGrupos(suporteGruposMontados);
-
-      const pessoasById = new Map<string, Pessoa>();
-      pessoas.forEach((p) => pessoasById.set(p.id, p));
-
-      const sistemasMontados: SistemaState[] = sistemasDb.map((sistema) => {
-        const rels = sistemaPessoas.filter((sp) => sp.sistema_id === sistema.id);
-
-        const responsaveis = rels
-          .filter((sp) => sp.tipo === "responsaveis")
-          .map((sp) => pessoasById.get(sp.pessoa_id))
-          .filter(Boolean)
-          .map((p) => ({
-            id: (p as Pessoa).id,
-            nome: (p as Pessoa).nome,
-            cargo: (p as Pessoa).cargo,
-            cargo_descricao: (p as Pessoa).cargo_descricao,
-            foto: (p as Pessoa).foto,
-          }));
-
-        const infraestrutura = rels
-          .filter((sp) => sp.tipo === "infraestrutura")
-          .map((sp) => pessoasById.get(sp.pessoa_id))
-          .filter(Boolean)
-          .map((p) => ({
-            id: (p as Pessoa).id,
-            nome: (p as Pessoa).nome,
-            cargo: (p as Pessoa).cargo,
-            cargo_descricao: (p as Pessoa).cargo_descricao,
-            foto: (p as Pessoa).foto,
-          }));
-
-        return {
-          id: sistema.id,
-          nome: sistema.nome,
-          foto: sistema.foto,
-          ordem: sistema.ordem,
-          responsaveis,
-          infraestrutura,
-        };
+      setUnidadesAbertas((prev) => {
+        const c = { ...prev };
+        u.forEach((x) => {
+          if (c[x.id] === undefined) c[x.id] = true;
+        });
+        return c;
       });
-
-      setSistemas(sistemasMontados);
-    } catch (error) {
-      mostrarErro(error, "carregarDados");
+    } catch (e) {
+      console.error(e);
+      setErro("Erro ao carregar dados.");
     } finally {
       setCarregando(false);
     }
@@ -273,481 +161,451 @@ export default function MapaVisualizacao() {
     size?: "sm" | "md" | "lg";
     borderColor?: string;
   }) => {
-    const sizes = {
-      sm: "w-8 h-8",
-      md: "w-12 h-12",
-      lg: "w-20 h-20",
-    };
-
-    const iconSizes = {
-      sm: "w-4 h-4",
-      md: "w-6 h-6",
-      lg: "w-10 h-10",
-    };
-
+    const sz = { sm: "w-8 h-8", md: "w-12 h-12", lg: "w-20 h-20" };
+    const ic = { sm: "w-4 h-4", md: "w-6 h-6", lg: "w-10 h-10" };
     return (
-      <div className="relative group flex-shrink-0">
-        <div
-          className={`${sizes[size]} rounded-full bg-muted border-2 ${borderColor} flex items-center justify-center overflow-hidden`}
-        >
-          {foto ? (
-            <img src={foto} alt="" className="w-full h-full object-cover" />
-          ) : (
-            <User className={`${iconSizes[size]} text-muted-foreground`} />
-          )}
-        </div>
+      <div
+        className={`${sz[size]} rounded-full bg-muted border-2 ${borderColor} flex items-center justify-center overflow-hidden`}
+      >
+        {foto ? (
+          <img src={foto} alt="" className="w-full h-full object-cover" />
+        ) : (
+          <User className={`${ic[size]} text-muted-foreground`} />
+        )}
       </div>
     );
   };
 
-  return (
-    <div className="size-full bg-gradient-to-br from-background via-background to-secondary/20 overflow-auto">
-      <div className="max-w-[1600px] mx-auto p-8">
-        <div className="text-center mb-16 relative pt-14 sm:pt-0">
-  <a
-    href="/admin"
-    className="absolute left-1/2 -translate-x-1/2 top-0 sm:left-auto sm:translate-x-0 sm:right-0 sm:top-0 px-4 py-2 text-sm bg-chart-2 text-white rounded-xl hover:bg-chart-2/90 transition-colors"
-  >
-    Área ADM
-  </a>
+  const sistemasITS = sistemas.filter((s) => s.setor === "ITS");
+  const sistemasINFRA = sistemas.filter((s) => s.setor === "INFRA");
+  const gerenteGeral = pessoas.find((p) => p.gerente_geral);
 
-  <h1 className="mb-2 text-3xl font-bold">Mapa de Sistemas</h1>
-  <p className="text-muted-foreground mb-4">Way Brasil</p>
+  const pessoaInfo = pessoas.find((x) => x.id === pessoaInfoId) ?? null;
+  const unidadeDaPessoa =
+    pessoaInfo && pessoaInfo.unidade_id
+      ? unidades.find((u) => u.id === pessoaInfo.unidade_id)?.nome ?? "—"
+      : "—";
+  const gerenteResp = pessoaInfo?.gerente_id
+    ? pessoas.find((p) => p.id === pessoaInfo.gerente_id)
+    : null;
+  const coordResp = pessoaInfo?.coordenador_id
+    ? pessoas.find((p) => p.id === pessoaInfo.coordenador_id)
+    : null;
 
+  const renderSetor = (
+    u: Unidade,
+    setor: SetorSistema,
+    titulo: string,
+    cargos: string[],
+    cor: string,
+  ) => (
+    <div className="border border-border rounded-2xl p-5 bg-card">
+      <div
+        className={`${cor} text-white px-3 py-1 rounded-full inline-flex items-center gap-2 text-xs font-medium mb-4`}
+      >
+        {setor === "ITS" ? <Server className="w-3 h-3" /> : <Network className="w-3 h-3" />}
+        {titulo}
+      </div>
 
-          {carregando && (
-            <p className="text-xs text-muted-foreground">
-              Carregando informações...
-            </p>
-          )}
-
-          {erro && (
-            <p className="text-xs text-destructive mt-2">
-              {erro}
-            </p>
-          )}
-        </div>
-
-        <div className="relative mb-20">
-          <div className="flex justify-center mb-8">
-            <div className="relative">
-              <div className="w-48 h-48 rounded-full bg-gradient-to-br from-chart-1 to-chart-2 flex flex-col items-center justify-center text-white shadow-2xl">
-                <Building2 className="w-16 h-16 mb-2" />
-                <div className="text-xl font-bold">Way Brasil</div>
-                <div className="text-sm opacity-80">Sistemas</div>
+      <div className="space-y-5">
+        {cargos.map((cargo) => {
+          const lista = getPessoasUnidadeSetor(u.id, setor).filter(
+            (p) => p.cargo === cargo,
+          );
+          return (
+            <div key={cargo}>
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                {cargo}
               </div>
-              <svg
-                className="absolute inset-0 w-full h-full pointer-events-none"
-                style={{ overflow: "visible" }}
-              >
-                <line
-                  x1="96"
-                  y1="192"
-                  x2="96"
-                  y2="280"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="text-border"
-                  strokeDasharray="4 4"
-                />
-              </svg>
-            </div>
-          </div>
-
-          {/* Nível 1 - Suporte */}
-          <div className="mb-12">
-            <div className="text-center mb-6">
-              <span className="bg-chart-3 text-white px-4 py-1.5 rounded-full text-sm font-medium">
-                Nível 1 - Suporte
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto mb-8">
-              {suporteGrupos.length === 0 ? (
-                <div className="md:col-span-3 text-center text-sm text-muted-foreground py-8">
-                  Nenhum grupo de suporte cadastrado.
+              {lista.length === 0 ? (
+                <div className="text-xs text-muted-foreground italic">
+                  Nenhuma pessoa cadastrada
                 </div>
               ) : (
-                suporteGrupos.map((grupo, gIdx) => (
-                  <div
-                    key={grupo.id || gIdx}
-                    className="bg-card border-2 border-chart-3 rounded-xl p-5 shadow-lg"
-                  >
-                    <div className="text-center mb-4">
-                      <div className="font-medium text-chart-3 mb-2">
-                        {grupo.grupo}
-                      </div>
-
-                      <div className="flex gap-1.5 flex-wrap justify-center mb-3">
-                        {grupo.empresas.map((empresa, eIdx) => (
-                          <span
-                            key={eIdx}
-                            className="text-xs px-2 py-0.5 bg-chart-3/10 text-chart-3 rounded border border-chart-3/20"
-                          >
-                            {empresa}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-3">
-                      {grupo.pessoas.length === 0 ? (
-                        <div className="text-xs text-muted-foreground text-center py-2">
-                          Nenhuma pessoa cadastrada
-                        </div>
-                      ) : (
-                        grupo.pessoas.map((pessoa, pIdx) => (
-                          <div
-                            key={pessoa.id || pIdx}
-                            className="flex items-center gap-3 p-2 bg-secondary/50 rounded-lg"
-                          >
-                            <AvatarView
-                              foto={pessoa.foto}
-                              size="md"
-                              borderColor="border-chart-3"
-                            />
-                            <div className="flex-1 min-w-0">
-                              <div className="font-medium text-sm">
-                                <span className="truncate">{pessoa.nome}</span>
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                {pessoa.cargo}
-                              </div>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div className="flex justify-center">
-              <svg width="2" height="40">
-                <line
-                  x1="1"
-                  y1="0"
-                  x2="1"
-                  y2="40"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="text-border"
-                  strokeDasharray="4 4"
-                />
-              </svg>
-            </div>
-          </div>
-
-          {/* Nível 2 - Analistas */}
-          <div className="flex justify-center mb-12">
-            <div className="relative bg-card border-2 border-chart-2 rounded-2xl p-6 shadow-lg max-w-4xl w-full">
-              <div className="absolute -top-3 left-6 bg-chart-2 text-white px-3 py-1 rounded-full text-sm font-medium">
-                Nível 2 - Analistas
-              </div>
-
-              <div className="flex gap-6 justify-center mt-2 flex-wrap items-start">
-                {analistas.length === 0 ? (
-                  <div className="text-sm text-muted-foreground py-6">
-                    Nenhum analista cadastrado.
-                  </div>
-                ) : (
-                  analistas.map((analista, idx) => (
+                <div className="flex flex-wrap gap-3">
+                  {lista.map((p) => (
                     <div
-                      key={analista.id || idx}
-                      className="flex flex-col items-center gap-2 relative"
+                      key={p.id}
+                      onClick={() => setPessoaInfoId(p.id)}
+                      className="flex items-center gap-3 p-2 bg-secondary/50 rounded-lg cursor-pointer hover:bg-secondary/70"
                     >
                       <AvatarView
-                        foto={analista.foto}
-                        size="lg"
-                        borderColor="border-chart-2"
+                        foto={p.foto}
+                        size="md"
+                        borderColor={cor.replace("bg-", "border-")}
                       />
-                      <div className="text-center">
-                        <div className="font-medium">
-                          {analista.nome}
+                      <div className="min-w-0">
+                        <div className="font-medium text-sm flex items-center gap-1">
+                          {p.nome}
+                          <Info className="w-3 h-3 opacity-50" />
                         </div>
-                        <div className="text-sm text-muted-foreground">
-                          {analista.cargo}
+                        <div className="text-xs text-muted-foreground">
+                          {getCargoExibicao(p)}
                         </div>
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
-
-              <svg
-                className="absolute left-1/2 top-full pointer-events-none"
-                width="2"
-                height="40"
-              >
-                <line
-                  x1="1"
-                  y1="0"
-                  x2="1"
-                  y2="40"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="text-border"
-                  strokeDasharray="4 4"
-                />
-              </svg>
-            </div>
-          </div>
-
-          {/* Nível 3 - Coordenação */}
-          <div className="flex justify-center mb-16">
-            <div className="relative bg-card border-2 border-chart-1 rounded-2xl p-6 shadow-lg w-80">
-              <div className="absolute -top-3 left-6 bg-chart-1 text-white px-3 py-1 rounded-full text-sm font-medium">
-                Nível 3 - Coordenação
-              </div>
-
-              <div className="flex flex-col items-center gap-4 mt-2">
-                <AvatarView
-                  foto={coordenacao.foto}
-                  size="lg"
-                  borderColor="border-chart-1"
-                />
-
-                <div className="text-center w-full">
-                  <div className="font-medium">
-                    {coordenacao.nome || "Sem coordenação cadastrada"}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    {coordenacao.cargo}
-                  </div>
-                </div>
-
-                <div className="flex gap-2 flex-wrap justify-center">
-                  {coordenacao.empresas.map((empresa, idx) => (
-                    <span
-                      key={idx}
-                      className="text-xs px-2 py-1 bg-chart-1/10 text-chart-1 rounded-md border border-chart-1/20"
-                    >
-                      {empresa}
-                    </span>
                   ))}
                 </div>
-              </div>
+              )}
             </div>
-          </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const renderSistemasBloco = (
+    titulo: string,
+    icone: JSX.Element,
+    lista: SistemaState[],
+    corClasse: string,
+  ) => (
+    <div className="mb-16">
+      <div className="text-center mb-6">
+        <div
+          className={`inline-flex items-center gap-2 ${corClasse} text-white px-6 py-2 rounded-full font-medium`}
+        >
+          {icone}
+          <span>{titulo}</span>
         </div>
-
-        {/* Sistemas */}
-        <div className="mb-16">
-          <div className="text-center mb-6">
-            <div className="inline-flex items-center gap-2 bg-chart-4 text-white px-6 py-2 rounded-full font-medium">
-              <Server className="w-5 h-5" />
-              <span>Sistemas Gerenciados</span>
-            </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-6xl mx-auto">
+        {lista.length === 0 && (
+          <div className="md:col-span-3 text-center text-sm text-muted-foreground py-6">
+            Nenhum sistema cadastrado.
           </div>
+        )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-6xl mx-auto">
-            {sistemas.length === 0 ? (
-              <div className="lg:col-span-3 text-center text-sm text-muted-foreground py-8">
-                Nenhum sistema cadastrado.
-              </div>
-            ) : (
-              sistemas.map((sistema, idx) => (
+        {lista.map((sistema) => (
+          <div
+            key={sistema.id}
+            className="bg-card border border-border rounded-xl shadow hover:shadow-lg transition-all"
+          >
+            <div
+              className="p-4 cursor-pointer hover:bg-secondary/30 rounded-t-xl"
+              onClick={() =>
+                setSistemaExpandido(sistemaExpandido === sistema.id ? null : sistema.id)
+              }
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-chart-4/20 to-chart-4/5 border border-chart-4/20 flex items-center justify-center overflow-hidden">
+                  {sistema.foto ? (
+                    <img
+                      src={sistema.foto}
+                      alt={sistema.nome}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <Server className="w-6 h-6 text-chart-4" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm font-medium px-2 py-1">{sistema.nome}</div>
+                  <div className="text-xs text-muted-foreground px-2">
+                    {sistema.responsaveis.length + sistema.infraestrutura.length} pessoa(s)
+                  </div>
+                </div>
                 <div
-                  key={sistema.id || idx}
-                  className="bg-card border border-border rounded-xl shadow hover:shadow-lg transition-all"
+                  className={`transition-transform ${
+                    sistemaExpandido === sistema.id ? "rotate-180" : ""
+                  }`}
                 >
-                  <div
-                    className="group relative p-4 cursor-pointer hover:bg-secondary/30 rounded-t-xl"
-                    onClick={() =>
-                      setSistemaExpandido(sistemaExpandido === idx ? null : idx)
-                    }
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="relative group/img">
-                        <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-chart-4/20 to-chart-4/5 border border-chart-4/20 flex items-center justify-center overflow-hidden">
-                          {sistema.foto ? (
+                  <ChevronDown className="w-5 h-5 text-muted-foreground" />
+                </div>
+              </div>
+            </div>
+
+            {sistemaExpandido === sistema.id && (
+              <div className="border-t border-border p-4 space-y-4">
+                <div>
+                  <div className="text-sm font-medium text-chart-2 mb-2">Responsáveis</div>
+                  {sistema.responsaveis.length === 0 ? (
+                    <div className="text-xs text-muted-foreground text-center py-2">
+                      Nenhum responsável
+                    </div>
+                  ) : (
+                    sistema.responsaveis.map((p) => (
+                      <div
+                        key={p.id}
+                        onClick={() => setPessoaInfoId(p.id)}
+                        className="flex items-center gap-2 p-2 bg-secondary/50 rounded-lg mb-2 cursor-pointer hover:bg-secondary/70"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-muted border border-chart-2 flex items-center justify-center overflow-hidden flex-shrink-0">
+                          {p.foto ? (
                             <img
-                              src={sistema.foto}
-                              alt={sistema.nome}
+                              src={p.foto}
+                              alt={p.nome}
                               className="w-full h-full object-cover"
                             />
                           ) : (
-                            <Server className="w-6 h-6 text-chart-4" />
+                            <User className="w-4 h-4 text-muted-foreground" />
                           )}
                         </div>
-                      </div>
-
-                      <div className="flex-1">
-                        <div className="text-sm font-medium px-2 py-1">
-                          {sistema.nome}
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-1 px-2">
-                          {sistema.responsaveis.length +
-                            sistema.infraestrutura.length}{" "}
-                          pessoa(s)
-                        </div>
-                      </div>
-
-                      <div
-                        className={`transition-transform ${
-                          sistemaExpandido === idx ? "rotate-180" : ""
-                        }`}
-                      >
-                        <svg
-                          className="w-5 h-5 text-muted-foreground"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M19 9l-7 7-7-7"
-                          />
-                        </svg>
-                      </div>
-                    </div>
-                  </div>
-
-                  {sistemaExpandido === idx && (
-                    <div className="border-t border-border p-4 space-y-4">
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="text-sm font-medium text-chart-2">
-                            Responsáveis
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-medium truncate flex items-center gap-1">
+                            {p.nome}
+                            <Info className="w-3 h-3 opacity-50" />
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {getCargoExibicao(p)}
                           </div>
                         </div>
-
-                        <div className="space-y-2">
-                          {sistema.responsaveis.length === 0 ? (
-                            <div className="text-xs text-muted-foreground text-center py-2">
-                              Nenhum responsável
-                            </div>
-                          ) : (
-                            sistema.responsaveis.map((pessoa, pIdx) => (
-                              <div
-                                key={pessoa.id || pIdx}
-                                className="flex items-center gap-2 p-2 bg-secondary/50 rounded-lg"
-                              >
-                                <div className="w-8 h-8 rounded-full bg-muted border border-chart-2 flex items-center justify-center overflow-hidden flex-shrink-0">
-                                  {pessoa.foto ? (
-                                    <img
-                                      src={pessoa.foto}
-                                      alt={pessoa.nome}
-                                      className="w-full h-full object-cover"
-                                    />
-                                  ) : (
-                                    <User className="w-4 h-4 text-muted-foreground" />
-                                  )}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="text-xs font-medium truncate">
-                                    {pessoa.nome}
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">
-                                    {getCargoExibicao(pessoa)}
-                                  </div>
-                                </div>
-                              </div>
-                            ))
-                          )}
-                        </div>
                       </div>
-
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="text-sm font-medium text-chart-5">
-                            Infraestrutura
-                          </div>
-                        </div>
-
-                        <div className="space-y-2">
-                          {sistema.infraestrutura.length === 0 ? (
-                            <div className="text-xs text-muted-foreground text-center py-2">
-                              Nenhum suporte de infra
-                            </div>
-                          ) : (
-                            sistema.infraestrutura.map((pessoa, pIdx) => (
-                              <div
-                                key={pessoa.id || pIdx}
-                                className="flex items-center gap-2 p-2 bg-secondary/50 rounded-lg"
-                              >
-                                <div className="w-8 h-8 rounded-full bg-muted border border-chart-5 flex items-center justify-center overflow-hidden flex-shrink-0">
-                                  {pessoa.foto ? (
-                                    <img
-                                      src={pessoa.foto}
-                                      alt={pessoa.nome}
-                                      className="w-full h-full object-cover"
-                                    />
-                                  ) : (
-                                    <User className="w-4 h-4 text-muted-foreground" />
-                                  )}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="text-xs font-medium truncate">
-                                    {pessoa.nome}
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">
-                                    {getCargoExibicao(pessoa)}
-                                  </div>
-                                </div>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                    ))
                   )}
                 </div>
-              ))
+
+                <div>
+                  <div className="text-sm font-medium text-chart-5 mb-2">Infraestrutura</div>
+                  {sistema.infraestrutura.length === 0 ? (
+                    <div className="text-xs text-muted-foreground text-center py-2">
+                      Nenhum suporte de infra
+                    </div>
+                  ) : (
+                    sistema.infraestrutura.map((p) => (
+                      <div
+                        key={p.id}
+                        onClick={() => setPessoaInfoId(p.id)}
+                        className="flex items-center gap-2 p-2 bg-secondary/50 rounded-lg mb-2 cursor-pointer hover:bg-secondary/70"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-muted border border-chart-5 flex items-center justify-center overflow-hidden flex-shrink-0">
+                          {p.foto ? (
+                            <img
+                              src={p.foto}
+                              alt={p.nome}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <User className="w-4 h-4 text-muted-foreground" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-medium truncate flex items-center gap-1">
+                            {p.nome}
+                            <Info className="w-3 h-3 opacity-50" />
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {getCargoExibicao(p)}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
             )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="size-full bg-gradient-to-br from-background via-background to-secondary/20 overflow-auto">
+      <div className="max-w-[1600px] mx-auto p-8">
+        <div className="text-center mb-10 relative">
+          <a
+            href="/admin"
+            className="absolute right-0 top-0 px-4 py-2 text-sm bg-chart-2 text-white rounded-xl hover:bg-chart-2/90 transition-colors"
+          >
+            Área ADM
+          </a>
+          <h1 className="mb-2 text-3xl font-bold">Mapa de Sistemas</h1>
+          <p className="text-muted-foreground mb-4">Way Brasil</p>
+          {carregando && (
+            <p className="text-xs text-muted-foreground">Carregando informações...</p>
+          )}
+          {erro && <p className="text-xs text-destructive mt-2">{erro}</p>}
+        </div>
+
+        {/* Way Brasil */}
+        <div className="flex justify-center mb-10">
+          <div className="w-48 h-48 rounded-full bg-gradient-to-br from-chart-1 to-chart-2 flex flex-col items-center justify-center text-white shadow-2xl">
+            <Building2 className="w-16 h-16 mb-2" />
+            <div className="text-xl font-bold">Way Brasil</div>
+            <div className="text-sm opacity-80">Sistemas</div>
           </div>
         </div>
 
-        {/* Equipe de Infraestrutura */}
-        <div className="mb-12 mt-12">
+        {/* Gerente Geral (abaixo do Way Brasil) */}
+        <div className="mb-12">
           <div className="text-center mb-6">
-            <div className="inline-flex items-center gap-2 bg-chart-5 text-white px-6 py-2 rounded-full font-medium">
-              <User className="w-5 h-5" />
-              <span>Equipe de Infraestrutura</span>
+            <div className="inline-flex items-center gap-2 bg-primary text-white px-6 py-2 rounded-full font-medium">
+              <Crown className="w-5 h-5" />
+              <span>Gerente Geral</span>
             </div>
           </div>
 
           <div className="flex justify-center">
-            <div className="relative bg-card border-2 border-chart-5 rounded-2xl p-6 shadow-lg max-w-4xl w-full">
-              <div className="absolute -top-3 left-6 bg-chart-5 text-white px-3 py-1 rounded-full text-sm font-medium">
-                Infraestrutura
-              </div>
-
-              <div className="flex gap-6 justify-center mt-2 flex-wrap items-start">
-                {equipeInfra.length === 0 ? (
-                  <div className="text-sm text-muted-foreground py-6">
-                    Nenhuma pessoa de infraestrutura cadastrada.
+            {gerenteGeral ? (
+              <div
+                className="bg-card border-2 border-primary/40 rounded-2xl p-5 shadow-lg min-w-[260px] flex items-center gap-4 cursor-pointer"
+                onClick={() => setPessoaInfoId(gerenteGeral.id)}
+              >
+                <AvatarView foto={gerenteGeral.foto} size="lg" borderColor="border-primary" />
+                <div>
+                  <div className="font-bold flex items-center gap-1">
+                    {gerenteGeral.nome}
+                    <Info className="w-3 h-3 opacity-50" />
                   </div>
-                ) : (
-                  equipeInfra.map((infra, idx) => (
-                    <div
-                      key={infra.id || idx}
-                      className="flex flex-col items-center gap-2 relative"
+                  <div className="text-sm text-muted-foreground">
+                    {getCargoExibicao(gerenteGeral)}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {gerenteGeral.setor === "INFRA" ? "Infra e Redes" : "Sistemas"}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground">
+                Nenhum gerente geral cadastrado.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Matriz de responsabilidade Unidades */}
+        <div className="mb-16">
+          <h2 className="text-lg font-bold mb-6">Matriz de responsabilidade Unidades</h2>
+          <div className="space-y-5">
+            {unidades.length === 0 && (
+              <div className="text-center text-sm text-muted-foreground py-8 border border-dashed rounded-xl">
+                Nenhuma unidade cadastrada.
+              </div>
+            )}
+
+            {unidades.map((u) => {
+              const aberto = unidadesAbertas[u.id] ?? true;
+              return (
+                <div
+                  key={u.id}
+                  className="border border-border rounded-2xl bg-card overflow-hidden"
+                >
+                  <div className="p-4 flex items-center gap-3 bg-secondary/30">
+                    <button
+                      className="p-2 rounded hover:bg-secondary"
+                      onClick={() =>
+                        setUnidadesAbertas((s) => ({ ...s, [u.id]: !aberto }))
+                      }
                     >
-                      <AvatarView
-                        foto={infra.foto}
-                        size="lg"
-                        borderColor="border-chart-5"
+                      <ChevronDown
+                        className={`w-4 h-4 transition-transform ${aberto ? "" : "-rotate-90"}`}
                       />
-                      <div className="text-center">
-                        <div className="font-medium">
-                          {infra.nome}
-                        </div>
-                        <div className="text-xs text-muted-foreground italic">
-                          {getCargoExibicao(infra)}
-                        </div>
-                      </div>
+                    </button>
+                    <Building2 className="w-5 h-5 text-primary" />
+                    <div className="font-bold text-base">{u.nome}</div>
+                  </div>
+
+                  {aberto && (
+                    <div className="p-5 grid grid-cols-1 lg:grid-cols-2 gap-5">
+                      {renderSetor(u, "ITS", "Setor Sistemas", CARGOS_ITS, "bg-chart-2")}
+                      {renderSetor(u, "INFRA", "Setor Infra e Redes", CARGOS_INFRA, "bg-chart-5")}
                     </div>
-                  ))
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {renderSistemasBloco(
+          "Sistemas Gerenciados — ITS",
+          <Server className="w-5 h-5" />,
+          sistemasITS,
+          "bg-chart-4",
+        )}
+        {renderSistemasBloco(
+          "Sistemas Gerenciados — Infra e Redes",
+          <Network className="w-5 h-5" />,
+          sistemasINFRA,
+          "bg-chart-5",
+        )}
+      </div>
+
+      {pessoaInfo && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => setPessoaInfoId(null)}
+        >
+          <div
+            className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <div className="font-medium text-sm flex items-center gap-2">
+                <Info className="w-4 h-4" />
+                Informações
+              </div>
+              <button
+                onClick={() => setPessoaInfoId(null)}
+                className="p-1.5 hover:bg-secondary rounded-lg transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 flex flex-col items-center gap-3">
+              <div className="w-20 h-20 rounded-full bg-muted border-2 border-primary flex items-center justify-center overflow-hidden">
+                {pessoaInfo.foto ? (
+                  <img
+                    src={pessoaInfo.foto}
+                    alt={pessoaInfo.nome}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <User className="w-10 h-10 text-muted-foreground" />
                 )}
               </div>
+              <div className="text-center">
+                <div className="font-bold text-lg">{pessoaInfo.nome}</div>
+                <div className="text-sm text-muted-foreground">
+                  {pessoaInfo.cargo_descricao?.trim() || pessoaInfo.cargo}
+                </div>
+              </div>
+
+              <div className="w-full border-t border-border mt-2 pt-4 text-sm space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Unidade</span>
+                  <span className="font-medium">{unidadeDaPessoa}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Setor</span>
+                  <span className="font-medium">
+                    {pessoaInfo.setor === "INFRA" ? "Infra e Redes" : "Sistemas"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Cargo</span>
+                  <span className="font-medium">{pessoaInfo.cargo}</span>
+                </div>
+                <div>
+                  <div className="text-muted-foreground mb-1">Descrição</div>
+                  <div className="font-medium whitespace-pre-wrap">
+                    {pessoaInfo.descricao?.trim() || "—"}
+                  </div>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Gerente</span>
+                  <span className="font-medium">{gerenteResp?.nome ?? "Não definido"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Coordenador</span>
+                  <span className="font-medium">{coordResp?.nome ?? "Não definido"}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-5 py-3 border-t border-border bg-secondary/20">
+              <button
+                onClick={() => setPessoaInfoId(null)}
+                className="w-full text-sm py-2 bg-chart-2 text-white rounded-lg hover:bg-chart-2/80 transition-colors font-medium"
+              >
+                Fechar
+              </button>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
