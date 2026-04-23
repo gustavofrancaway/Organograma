@@ -50,7 +50,8 @@ const CARGOS_ITS: CargoConfig[] = [
 
 const CARGOS_INFRA: CargoConfig[] = [
   { cargo: "Suporte", label: "Nível 1 - Suporte" },
-  { cargo: "Coordenação", label: "Nível 2 - Coordenação" },
+  { cargo: "Analista", label: "Nível 2 - Analista" },
+  { cargo: "Coordenação", label: "Nível 3 - Coordenação" },
   { cargo: "Gerente", label: "Gerente" },
 ];
 
