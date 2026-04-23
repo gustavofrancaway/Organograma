@@ -12,6 +12,7 @@ import {
   Network,
   ChevronDown,
   Crown,
+  Search,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
@@ -67,9 +68,11 @@ const CARGOS_ITS: CargoConfig[] = [
 // Ordem da tela do Setor Infra e Redes
 const CARGOS_INFRA: CargoConfig[] = [
   { cargo: "Suporte", label: "Nível 1 - Suporte" },
-  { cargo: "Coordenação", label: "Nível 2 - Coordenação" },
+  { cargo: "Analista", label: "Nível 2 - Analista" },
+  { cargo: "Coordenação", label: "Nível 3 - Coordenação" },
   { cargo: "Gerente", label: "Gerente" },
 ];
+
 
 const ordenarPorOrdem = <T extends { ordem?: number | null; nome?: string }>(
   lista: T[],
@@ -104,6 +107,8 @@ export default function App() {
     sistemaId: string;
     tipo: "responsaveis" | "infraestrutura";
   } | null>(null);
+  // NOVO: campo de busca do modal
+  const [buscaModal, setBuscaModal] = useState("");
 
   const [pessoaInfoId, setPessoaInfoId] = useState<string | null>(null);
 
@@ -445,11 +450,13 @@ export default function App() {
 
   const abrirModal = (sid: string, tipo: "responsaveis" | "infraestrutura") => {
     setModalConfig({ sistemaId: sid, tipo });
+    setBuscaModal(""); // reseta busca sempre que abre
     setModalAberto(true);
   };
   const fecharModal = () => {
     setModalAberto(false);
     setModalConfig(null);
+    setBuscaModal("");
   };
   const isSelecionada = (p: Pessoa) => {
     if (!modalConfig) return false;
@@ -461,6 +468,24 @@ export default function App() {
   };
 
   const todasPessoasOrdenadas = useMemo(() => ordenarPorOrdem(pessoas), [pessoas]);
+
+  // NOVO: filtro do modal por nome, cargo, unidade e setor
+  const pessoasFiltradasModal = useMemo(() => {
+    const termo = buscaModal.trim().toLowerCase();
+    if (!termo) return todasPessoasOrdenadas;
+    return todasPessoasOrdenadas.filter((p) => {
+      const nomeUnidade =
+        unidades.find((u) => u.id === p.unidade_id)?.nome?.toLowerCase() ?? "";
+      const setorTxt = p.setor === "INFRA" ? "infra e redes" : "sistemas";
+      const cargoTxt = `${p.cargo ?? ""} ${p.cargo_descricao ?? ""}`.toLowerCase();
+      return (
+        (p.nome ?? "").toLowerCase().includes(termo) ||
+        cargoTxt.includes(termo) ||
+        nomeUnidade.includes(termo) ||
+        setorTxt.includes(termo)
+      );
+    });
+  }, [buscaModal, todasPessoasOrdenadas, unidades]);
 
   const AvatarUpload = ({
     foto,
@@ -1161,44 +1186,77 @@ export default function App() {
               </button>
             </div>
 
-            <div className="max-h-80 overflow-y-auto p-3 space-y-1.5">
-              {todasPessoasOrdenadas.map((p) => {
-                const selec = isSelecionada(p);
-                return (
-                  <div
-                    key={p.id}
-                    onClick={() => togglePessoaSistema(p)}
-                    className={`flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-colors ${
-                      selec
-                        ? "bg-chart-2/10 border border-chart-2/30"
-                        : "hover:bg-secondary/60 border border-transparent"
-                    }`}
+            {/* NOVO: campo de busca */}
+            <div className="px-5 pt-4 pb-2">
+              <div className="relative">
+                <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={buscaModal}
+                  onChange={(e) => setBuscaModal(e.target.value)}
+                  placeholder="Buscar por nome, cargo, unidade..."
+                  className="w-full pl-9 pr-8 py-2 rounded-xl border border-border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-chart-2/30"
+                  autoFocus
+                />
+                {buscaModal && (
+                  <button
+                    onClick={() => setBuscaModal("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-secondary"
+                    title="Limpar busca"
                   >
-                    <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center overflow-hidden flex-shrink-0 border border-border">
-                      {p.foto ? (
-                        <img src={p.foto} alt={p.nome} className="w-full h-full object-cover" />
-                      ) : (
-                        <User className="w-4 h-4 text-muted-foreground" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{p.nome}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {getCargoExibicao(p)} ·{" "}
-                        {unidades.find((u) => u.id === p.unidade_id)?.nome ?? "—"} ·{" "}
-                        {p.setor === "INFRA" ? "Infra e Redes" : "Sistemas"}
-                      </div>
-                    </div>
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+              <div className="text-[11px] text-muted-foreground mt-1 px-1">
+                {pessoasFiltradasModal.length} resultado(s)
+              </div>
+            </div>
+
+            <div className="max-h-80 overflow-y-auto p-3 space-y-1.5">
+              {pessoasFiltradasModal.length === 0 ? (
+                <div className="text-center text-xs text-muted-foreground py-6">
+                  Nenhuma pessoa encontrada.
+                </div>
+              ) : (
+                pessoasFiltradasModal.map((p) => {
+                  const selec = isSelecionada(p);
+                  return (
                     <div
-                      className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${
-                        selec ? "bg-chart-2 text-white" : "border border-border"
+                      key={p.id}
+                      onClick={() => togglePessoaSistema(p)}
+                      className={`flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-colors ${
+                        selec
+                          ? "bg-chart-2/10 border border-chart-2/30"
+                          : "hover:bg-secondary/60 border border-transparent"
                       }`}
                     >
-                      {selec && <Check className="w-3 h-3" />}
+                      <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center overflow-hidden flex-shrink-0 border border-border">
+                        {p.foto ? (
+                          <img src={p.foto} alt={p.nome} className="w-full h-full object-cover" />
+                        ) : (
+                          <User className="w-4 h-4 text-muted-foreground" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">{p.nome}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {getCargoExibicao(p)} ·{" "}
+                          {unidades.find((u) => u.id === p.unidade_id)?.nome ?? "—"} ·{" "}
+                          {p.setor === "INFRA" ? "Infra e Redes" : "Sistemas"}
+                        </div>
+                      </div>
+                      <div
+                        className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${
+                          selec ? "bg-chart-2 text-white" : "border border-border"
+                        }`}
+                      >
+                        {selec && <Check className="w-3 h-3" />}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
 
             <div className="px-5 py-3 border-t border-border bg-secondary/20">
