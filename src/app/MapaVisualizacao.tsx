@@ -1,9 +1,19 @@
-import { User, Building2, Server, Info, Network, X, ChevronDown, Crown } from "lucide-react";
+import {
+  User,
+  Building2,
+  Server,
+  Info,
+  Network,
+  X,
+  ChevronDown,
+  Crown,
+  Briefcase,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { supabase } from "../lib/supabase";
 
-type SetorSistema = "ITS" | "INFRA";
+type SetorSistema = "ITS" | "INFRA" | "ADM";
 
 type Pessoa = {
   id: string;
@@ -39,21 +49,37 @@ type SistemaPessoaDb = {
   tipo: "responsaveis" | "infraestrutura";
 };
 
-type CargoConfig = { cargo: string; label: string };
+// cargos: aceita um ou vários "cargos internos" para o mesmo nível (compatibilidade com dados antigos)
+type CargoConfig = { cargos: string[]; label: string };
 
+// Setor Sistemas (ITS) — tem NÍVEL 4
 const CARGOS_ITS: CargoConfig[] = [
-  { cargo: "Suporte", label: "Nível 1 - Suporte" },
-  { cargo: "Analista", label: "Nível 2 - Analista" },
-  { cargo: "Coordenação", label: "Nível 3 - Coordenação" },
-  { cargo: "Gerente", label: "Gerente" },
+  { cargos: ["Suporte"], label: "NÍVEL 1" },
+  { cargos: ["Analista"], label: "NÍVEL 2" },
+  { cargos: ["Analista N3"], label: "NÍVEL 3" },
+  // aceita "Coordenação" e também "Nivel4" (dados antigos)
+  { cargos: ["Coordenação"], label: "NÍVEL 4" },
+  { cargos: ["Gerente"], label: "GERENTE" },
 ];
 
+// Setor Infra e Redes
 const CARGOS_INFRA: CargoConfig[] = [
-  { cargo: "Suporte", label: "Nível 1 - Suporte" },
-  { cargo: "Analista", label: "Nível 2 - Analista" },
-  { cargo: "Coordenação", label: "Nível 3 - Coordenação" },
-  { cargo: "Gerente", label: "Gerente" },
+  { cargos: ["Suporte"], label: "NÍVEL 1" },
+  { cargos: ["Analista"], label: "NÍVEL 2" },
+  { cargos: ["Coordenação"], label: "NÍVEL 3" },
+  { cargos: ["Gerente"], label: "GERENTE" },
 ];
+
+// Setor Administrativo
+const CARGOS_ADM: CargoConfig[] = [
+  { cargos: ["Suporte"], label: "NÍVEL 1" },
+  { cargos: ["Analista"], label: "NÍVEL 2" },
+  { cargos: ["Coordenação"], label: "NÍVEL 3" },
+  { cargos: ["Gerente"], label: "GERENTE" },
+];
+
+const nomeSetor = (s: SetorSistema) =>
+  s === "INFRA" ? "Infra e Redes" : s === "ADM" ? "Administrativo" : "Sistemas";
 
 const ordenarPorOrdem = <T extends { ordem?: number | null; nome?: string }>(
   lista: T[],
@@ -91,6 +117,9 @@ export default function MapaVisualizacao() {
       ),
     );
 
+  const normalizarSetor = (s: any): SetorSistema =>
+    s === "INFRA" ? "INFRA" : s === "ADM" ? "ADM" : "ITS";
+
   const carregar = async () => {
     try {
       setCarregando(true);
@@ -109,11 +138,11 @@ export default function MapaVisualizacao() {
       const u = (uRes.data ?? []) as Unidade[];
       const p = (pRes.data ?? []).map((r: any) => ({
         ...r,
-        setor: r.setor === "INFRA" ? "INFRA" : "ITS",
+        setor: normalizarSetor(r.setor),
       })) as Pessoa[];
       const sDb = (sRes.data ?? []).map((r: any) => ({
         ...r,
-        setor: r.setor === "INFRA" ? "INFRA" : "ITS",
+        setor: normalizarSetor(r.setor),
       })) as Array<{
         id: string;
         nome: string;
@@ -216,17 +245,23 @@ export default function MapaVisualizacao() {
       <div
         className={`${cor} text-white px-3 py-1 rounded-full inline-flex items-center gap-2 text-xs font-medium mb-4`}
       >
-        {setor === "ITS" ? <Server className="w-3 h-3" /> : <Network className="w-3 h-3" />}
+        {setor === "ITS" ? (
+          <Server className="w-3 h-3" />
+        ) : setor === "INFRA" ? (
+          <Network className="w-3 h-3" />
+        ) : (
+          <Briefcase className="w-3 h-3" />
+        )}
         {titulo}
       </div>
 
       <div className="space-y-5">
-        {cargos.map(({ cargo, label }) => {
-          const lista = getPessoasUnidadeSetor(u.id, setor).filter(
-            (p) => p.cargo === cargo,
+        {cargos.map(({ cargos: cargosNivel, label }) => {
+          const lista = getPessoasUnidadeSetor(u.id, setor).filter((p) =>
+            cargosNivel.includes(p.cargo),
           );
           return (
-            <div key={cargo}>
+            <div key={label}>
               <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
                 {label}
               </div>
@@ -463,7 +498,7 @@ export default function MapaVisualizacao() {
                     {getCargoExibicao(gerenteGeral)}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
-                    {gerenteGeral.setor === "INFRA" ? "Infra e Redes" : "Sistemas"}
+                    {nomeSetor(gerenteGeral.setor)}
                   </div>
                 </div>
               </div>
@@ -507,9 +542,10 @@ export default function MapaVisualizacao() {
                   </div>
 
                   {aberto && (
-                    <div className="p-5 grid grid-cols-1 lg:grid-cols-2 gap-5">
+                    <div className="p-5 grid grid-cols-1 lg:grid-cols-3 gap-5">
                       {renderSetor(u, "ITS", "Setor Sistemas", CARGOS_ITS, "bg-chart-2")}
                       {renderSetor(u, "INFRA", "Setor Infra e Redes", CARGOS_INFRA, "bg-chart-5")}
+                      {renderSetor(u, "ADM", "Setor Administrativo", CARGOS_ADM, "bg-chart-3")}
                     </div>
                   )}
                 </div>
@@ -580,13 +616,13 @@ export default function MapaVisualizacao() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Setor</span>
-                  <span className="font-medium">
-                    {pessoaInfo.setor === "INFRA" ? "Infra e Redes" : "Sistemas"}
-                  </span>
+                  <span className="font-medium">{nomeSetor(pessoaInfo.setor)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Cargo</span>
-                  <span className="font-medium">{pessoaInfo.cargo}</span>
+                  <span className="font-medium">
+                    {pessoaInfo.cargo_descricao?.trim() || pessoaInfo.cargo}
+                  </span>
                 </div>
                 <div>
                   <div className="text-muted-foreground mb-1">Descrição</div>

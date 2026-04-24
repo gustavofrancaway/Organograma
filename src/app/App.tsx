@@ -13,13 +13,14 @@ import {
   ChevronDown,
   Crown,
   Search,
+  Briefcase,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { supabase } from "../lib/supabase";
 import Login from "./components/Login";
 
-type SetorSistema = "ITS" | "INFRA";
+type SetorSistema = "ITS" | "INFRA" | "ADM";
 
 type Pessoa = {
   id: string;
@@ -57,22 +58,38 @@ type SistemaPessoaDb = {
 
 type CargoConfig = { cargo: string; label: string };
 
-// Ordem da tela do Setor Sistemas (ITS)
-const CARGOS_ITS: CargoConfig[] = [
-  { cargo: "Suporte", label: "Nível 1 - Suporte" },
-  { cargo: "Analista", label: "Nível 2 - Analista" },
-  { cargo: "Coordenação", label: "Nível 3 - Coordenação" },
-  { cargo: "Gerente", label: "Gerente" },
+// Setor Sistemas (ITS) — tem até o Nível 4
+// cargo = chave interna (única). cargoVisivel = o que aparece escrito.
+// label = o nível exibido no bloco.
+type CargoConfigITS = CargoConfig & { cargoVisivel: string };
+
+const CARGOS_ITS: CargoConfigITS[] = [
+  { cargo: "Suporte",       label: "NÍVEL 1", cargoVisivel: "Suporte" },
+  { cargo: "Analista",      label: "NÍVEL 2", cargoVisivel: "Analista" },
+  { cargo: "Analista N3",   label: "NÍVEL 3", cargoVisivel: "Analista" },
+  { cargo: "Coordenação",   label: "NÍVEL 4", cargoVisivel: "Coordenação" },
+  { cargo: "Gerente",       label: "GERENTE", cargoVisivel: "Gerente" },
 ];
 
-// Ordem da tela do Setor Infra e Redes
+
+// Setor Infra e Redes
 const CARGOS_INFRA: CargoConfig[] = [
-  { cargo: "Suporte", label: "Nível 1 - Suporte" },
-  { cargo: "Analista", label: "Nível 2 - Analista" },
-  { cargo: "Coordenação", label: "Nível 3 - Coordenação" },
-  { cargo: "Gerente", label: "Gerente" },
+  { cargo: "Suporte", label: "NÍVEL 1" },
+  { cargo: "Analista", label: "NÍVEL 2" },
+  { cargo: "Coordenação", label: "NÍVEL 3" },
+  { cargo: "Gerente", label: "GERENTE" },
 ];
 
+// Setor Administrativo
+const CARGOS_ADM: CargoConfig[] = [
+  { cargo: "Suporte", label: "NÍVEL 1" },
+  { cargo: "Analista", label: "NÍVEL 2" },
+  { cargo: "Coordenação", label: "NÍVEL 3" },
+  { cargo: "Gerente", label: "GERENTE" },
+];
+
+const nomeSetor = (s: SetorSistema) =>
+  s === "INFRA" ? "Infra e Redes" : s === "ADM" ? "Administrativo" : "Sistemas";
 
 const ordenarPorOrdem = <T extends { ordem?: number | null; nome?: string }>(
   lista: T[],
@@ -83,6 +100,9 @@ const ordenarPorOrdem = <T extends { ordem?: number | null; nome?: string }>(
     if (oa !== ob) return oa - ob;
     return (a.nome ?? "").localeCompare(b.nome ?? "");
   });
+
+// normaliza nome para comparação (case-insensitive + trim)
+const chaveNome = (n: string | null | undefined) => (n ?? "").trim().toLowerCase();
 
 export default function App() {
   const [unidades, setUnidades] = useState<Unidade[]>([]);
@@ -107,7 +127,6 @@ export default function App() {
     sistemaId: string;
     tipo: "responsaveis" | "infraestrutura";
   } | null>(null);
-  // NOVO: campo de busca do modal
   const [buscaModal, setBuscaModal] = useState("");
 
   const [pessoaInfoId, setPessoaInfoId] = useState<string | null>(null);
@@ -154,11 +173,21 @@ export default function App() {
       const u = (uRes.data ?? []) as Unidade[];
       const p = (pRes.data ?? []).map((r: any) => ({
         ...r,
-        setor: r.setor === "INFRA" ? "INFRA" : "ITS",
+        setor:
+          r.setor === "INFRA"
+            ? "INFRA"
+            : r.setor === "ADM"
+            ? "ADM"
+            : "ITS",
       })) as Pessoa[];
       const sDb = (sRes.data ?? []).map((r: any) => ({
         ...r,
-        setor: r.setor === "INFRA" ? "INFRA" : "ITS",
+        setor:
+          r.setor === "INFRA"
+            ? "INFRA"
+            : r.setor === "ADM"
+            ? "ADM"
+            : "ITS",
       })) as Array<{
         id: string;
         nome: string;
@@ -275,26 +304,34 @@ export default function App() {
 
   // pessoas
   const addPessoa = async (uid: string, setor: SetorSistema, cargo: string) => {
-    try {
-      const list = pessoas.filter(
-        (p) => p.unidade_id === uid && p.setor === setor && p.cargo === cargo,
-      );
-      const ord = list.length > 0 ? Math.max(...list.map((p) => p.ordem ?? 0)) + 1 : 1;
-      const { error } = await supabase.from("pessoas").insert({
-        nome: `Novo ${cargo}`,
-        cargo,
-        cargo_descricao: cargo,
-        setor,
-        unidade_id: uid,
-        ordem: ord,
-        gerente_geral: false,
-      });
-      if (error) throw error;
-      await carregarDados();
-    } catch (e) {
-      mostrarErro(e, "addPessoa");
+  try {
+    // Descobre o "nome visível" do cargo com base no setor
+    let cargoVisivel = cargo;
+    if (setor === "ITS") {
+      const cfg = CARGOS_ITS.find((c) => c.cargo === cargo);
+      if (cfg) cargoVisivel = cfg.cargoVisivel;
     }
-  };
+
+    const list = pessoas.filter(
+      (p) => p.unidade_id === uid && p.setor === setor && p.cargo === cargo,
+    );
+    const ord = list.length > 0 ? Math.max(...list.map((p) => p.ordem ?? 0)) + 1 : 1;
+    const { error } = await supabase.from("pessoas").insert({
+      nome: `Novo ${cargoVisivel}`,
+      cargo, // chave interna (única por nível)
+      cargo_descricao: cargoVisivel, // o que o usuário vê escrito
+      setor,
+      unidade_id: uid,
+      ordem: ord,
+      gerente_geral: false,
+    });
+    if (error) throw error;
+    await carregarDados();
+  } catch (e) {
+    mostrarErro(e, "addPessoa");
+  }
+};
+
 
   const addGerenteGeral = async () => {
     try {
@@ -321,6 +358,29 @@ export default function App() {
       await carregarDados();
     } catch (e) {
       mostrarErro(e, "updPessoa");
+    }
+  };
+
+  // NOVO: atualiza a foto de UMA pessoa e propaga para todos os homônimos (case-insensitive)
+  const atualizarFotoPessoaPorNome = async (idOrigem: string, foto: string) => {
+    try {
+      const origem = pessoas.find((x) => x.id === idOrigem);
+      if (!origem) return;
+
+      const nomeAlvo = chaveNome(origem.nome);
+      const mesmoNome = pessoas.filter((p) => chaveNome(p.nome) === nomeAlvo);
+
+      if (mesmoNome.length === 0) return;
+
+      const ids = mesmoNome.map((p) => p.id);
+      const { error } = await supabase
+        .from("pessoas")
+        .update({ foto })
+        .in("id", ids);
+      if (error) throw error;
+      await carregarDados();
+    } catch (e) {
+      mostrarErro(e, "atualizarFotoPessoaPorNome");
     }
   };
 
@@ -450,7 +510,7 @@ export default function App() {
 
   const abrirModal = (sid: string, tipo: "responsaveis" | "infraestrutura") => {
     setModalConfig({ sistemaId: sid, tipo });
-    setBuscaModal(""); // reseta busca sempre que abre
+    setBuscaModal("");
     setModalAberto(true);
   };
   const fecharModal = () => {
@@ -469,14 +529,13 @@ export default function App() {
 
   const todasPessoasOrdenadas = useMemo(() => ordenarPorOrdem(pessoas), [pessoas]);
 
-  // NOVO: filtro do modal por nome, cargo, unidade e setor
   const pessoasFiltradasModal = useMemo(() => {
     const termo = buscaModal.trim().toLowerCase();
     if (!termo) return todasPessoasOrdenadas;
     return todasPessoasOrdenadas.filter((p) => {
       const nomeUnidade =
         unidades.find((u) => u.id === p.unidade_id)?.nome?.toLowerCase() ?? "";
-      const setorTxt = p.setor === "INFRA" ? "infra e redes" : "sistemas";
+      const setorTxt = nomeSetor(p.setor).toLowerCase();
       const cargoTxt = `${p.cargo ?? ""} ${p.cargo_descricao ?? ""}`.toLowerCase();
       return (
         (p.nome ?? "").toLowerCase().includes(termo) ||
@@ -557,7 +616,7 @@ export default function App() {
         foto={p.foto}
         size="md"
         borderColor={borderCor}
-        onUpload={(url) => updPessoa(p.id, { foto: url })}
+        onUpload={(url) => atualizarFotoPessoaPorNome(p.id, url)}
       />
       <div className="min-w-0">
         {editandoNome === `p-${p.id}-nome` ? (
@@ -636,7 +695,13 @@ export default function App() {
       <div
         className={`${cor} text-white px-3 py-1 rounded-full inline-flex items-center gap-2 text-xs font-medium mb-4`}
       >
-        {setor === "ITS" ? <Server className="w-3 h-3" /> : <Network className="w-3 h-3" />}
+        {setor === "ITS" ? (
+          <Server className="w-3 h-3" />
+        ) : setor === "INFRA" ? (
+          <Network className="w-3 h-3" />
+        ) : (
+          <Briefcase className="w-3 h-3" />
+        )}
         {titulo}
       </div>
 
@@ -974,7 +1039,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Gerente Geral (abaixo do Way Brasil) */}
+        {/* Gerente Geral */}
         <div className="mb-12">
           <div className="text-center mb-6">
             <div className="inline-flex items-center gap-2 bg-primary text-white px-6 py-2 rounded-full font-medium">
@@ -990,7 +1055,7 @@ export default function App() {
                   foto={gerenteGeral.foto}
                   size="lg"
                   borderColor="border-primary"
-                  onUpload={(url) => updPessoa(gerenteGeral.id, { foto: url })}
+                  onUpload={(url) => atualizarFotoPessoaPorNome(gerenteGeral.id, url)}
                 />
                 <div className="min-w-0">
                   {editandoNome === `gg-nome-${gerenteGeral.id}` ? (
@@ -1034,7 +1099,7 @@ export default function App() {
                     {getCargoExibicao(gerenteGeral)}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
-                    {gerenteGeral.setor === "INFRA" ? "Infra e Redes" : "Sistemas"}
+                    {nomeSetor(gerenteGeral.setor)}
                   </div>
                 </div>
               </div>
@@ -1126,9 +1191,10 @@ export default function App() {
                   </div>
 
                   {aberto && (
-                    <div className="p-5 grid grid-cols-1 lg:grid-cols-2 gap-5">
+                    <div className="p-5 grid grid-cols-1 lg:grid-cols-3 gap-5">
                       {renderSetor(u, "ITS", "Setor Sistemas", CARGOS_ITS, "bg-chart-2")}
                       {renderSetor(u, "INFRA", "Setor Infra e Redes", CARGOS_INFRA, "bg-chart-5")}
+                      {renderSetor(u, "ADM", "Setor Administrativo", CARGOS_ADM, "bg-chart-3")}
                     </div>
                   )}
                 </div>
@@ -1186,7 +1252,6 @@ export default function App() {
               </button>
             </div>
 
-            {/* NOVO: campo de busca */}
             <div className="px-5 pt-4 pb-2">
               <div className="relative">
                 <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
@@ -1243,7 +1308,7 @@ export default function App() {
                         <div className="text-xs text-muted-foreground">
                           {getCargoExibicao(p)} ·{" "}
                           {unidades.find((u) => u.id === p.unidade_id)?.nome ?? "—"} ·{" "}
-                          {p.setor === "INFRA" ? "Infra e Redes" : "Sistemas"}
+                          {nomeSetor(p.setor)}
                         </div>
                       </div>
                       <div
@@ -1299,7 +1364,7 @@ export default function App() {
                 foto={pessoaInfo.foto}
                 size="lg"
                 borderColor="border-primary"
-                onUpload={(url) => updPessoa(pessoaInfo.id, { foto: url })}
+                onUpload={(url) => atualizarFotoPessoaPorNome(pessoaInfo.id, url)}
               />
               <div className="text-center">
                 <div className="font-bold text-lg">{pessoaInfo.nome}</div>
@@ -1315,9 +1380,7 @@ export default function App() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Setor</span>
-                  <span className="font-medium">
-                    {pessoaInfo.setor === "INFRA" ? "Infra e Redes" : "Sistemas"}
-                  </span>
+                  <span className="font-medium">{nomeSetor(pessoaInfo.setor)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Cargo</span>
